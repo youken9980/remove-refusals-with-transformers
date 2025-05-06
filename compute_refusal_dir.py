@@ -8,7 +8,7 @@ import os
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
-MODEL_ID = "/Volumes/TiPro7000/gpt/huggingface.co/Qwen/Qwen2.5-0.5B-Instruct"
+MODEL_ID = "Qwen2.5-0.5B-Instruct"
 TORCH_DTYPE = torch.bfloat16
 DEVICE_MAP = "cpu"
 

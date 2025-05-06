@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
-MODEL_ID = "/Volumes/TiPro7000/gpt/huggingface.co/Qwen/Qwen2.5-0.5B-Instruct"
+MODEL_ID = "Qwen2.5-0.5B-Instruct"
 # More samples can help find the direction better.
 NUM_PROMPT_SAMPLES = 32
 # Used to skip the first and last layers for the modifications.
