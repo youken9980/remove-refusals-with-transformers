@@ -9,7 +9,7 @@ os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
 MODEL_ID = "Qwen/Qwen3-32B"
 # More samples can help find the direction better.
-NUM_PROMPT_SAMPLES = 32
+NUM_PROMPT_SAMPLES = 32768
 # Used to skip the first and last layers for the modifications.
 SKIP_BEGIN_LAYERS = 1  # Don't mess with the first layer.
 SKIP_END_LAYERS = 0
