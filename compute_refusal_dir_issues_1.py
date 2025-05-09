@@ -1,44 +1,41 @@
 import torch
 import gc
-import os
 import random
+
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer, BitsAndBytesConfig
 from tqdm import tqdm
 
-os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+#MODEL_ID = "Mistral-7B-Instruct-v0.2"
+MODEL_ID = "miqu-1-70b-sf"
 
-MODEL_ID = "Qwen2.5-0.5B-Instruct"
 # More samples can help find the direction better.
 NUM_PROMPT_SAMPLES = 32
+
 # Used to skip the first and last layers for the modifications.
 SKIP_BEGIN_LAYERS = 1  # Don't mess with the first layer.
 SKIP_END_LAYERS = 0
+
 # The layer we will use for the refusal_dir calculation will be floor(LAYER_FRACTION_TO_USE * model.layers).
 LAYER_FRACTION_TO_USE = 0.6
+
 # Use a negative scale_factor to "induce" and a positive scale_factor of < 1 to "ablate" less.
 SCALE_FACTOR = 1.0
 
-TORCH_DTYPE = torch.bfloat16
-DEVICE_MAP = "cpu"
-
 torch.inference_mode()
-torch.set_default_device(DEVICE_MAP)
+torch.set_default_device("cpu")
 torch.set_grad_enabled(False)
 
 # Load the model on the GPU in quantized type if we can.
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_ID,
     trust_remote_code=True,
-    torch_dtype=TORCH_DTYPE,
-    # quantization_config=BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16),
+    torch_dtype=torch.float16,
+    quantization_config=BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16),
     low_cpu_mem_usage=True,
-    device_map=DEVICE_MAP
+    device_map='auto'
 )
 model.requires_grad_(False)
-if torch.backends.mps.is_available():
-    TORCH_DTYPE = torch.float32
-    DEVICE_MAP = "mps"
-    model = model.to(TORCH_DTYPE).to(DEVICE_MAP).eval()
+
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
 
 layer_idx = int(len(model.model.layers) * LAYER_FRACTION_TO_USE)
@@ -73,7 +70,7 @@ def generate(toks):
         pad_token_id=tokenizer.eos_token_id
     )
     bar_generate.update(n=1)
-    return output.hidden_states[0][layer_idx][:, -1, :].to(DEVICE_MAP) # Final hidden state = -1.
+    return output.hidden_states[0][layer_idx][:, -1, :].to('cpu') # Final hidden state = -1.
 
 harmful_hidden = [generate(toks) for toks in harmful_toks]
 harmless_hidden = [generate(toks) for toks in harmless_toks]
@@ -97,19 +94,15 @@ torch.cuda.empty_cache()
 model = AutoModelForCausalLM.from_pretrained(
     MODEL_ID,
     trust_remote_code=True,
-    torch_dtype=TORCH_DTYPE,
+    torch_dtype=torch.bfloat16,
     low_cpu_mem_usage=True,
-    device_map=DEVICE_MAP
+    device_map='cpu'
 )
 model.requires_grad_(False)
-if torch.backends.mps.is_available():
-    TORCH_DTYPE = torch.float32
-    DEVICE_MAP = "mps"
-    model = model.to(TORCH_DTYPE).to(DEVICE_MAP).eval()
 
 # Make sure it's on the 'cpu' device.
-# if refusal_dir.device != model.device:
-#     refusal_dir = refusal_dir.to(model.device)
+if refusal_dir.device != model.device:
+    refusal_dir = refusal_dir.to(model.device)
 
 # Get the language model component and check it's as expected.
 lm_model = model.model
@@ -127,10 +120,10 @@ bar_layers = tqdm(total= (num_layers - (SKIP_BEGIN_LAYERS + SKIP_END_LAYERS)) * 
 # NOTE: Use a negative scale_factor to "induce" and a positive scale_factor of < 1 to "ablate" less.
 def modify_tensor(tensor_data, refusal_dir, scale_factor: float = 1.0):
     assert scale_factor <= 1.0, "Using a scale_factor of > 1 doesn't make sense..."
-    tensor_bfloat16 = tensor_data.to(TORCH_DTYPE)
-    refusal_dir_bfloat16 = refusal_dir.to(TORCH_DTYPE)
-    tensor_bfloat16 -= scale_factor * torch.matmul(torch.outer(refusal_dir_bfloat16, refusal_dir_bfloat16), tensor_bfloat16)
-    tensor_modified = tensor_bfloat16.to(TORCH_DTYPE)
+    tensor_float32 = tensor_data.to(torch.float32)
+    refusal_dir_float32 = refusal_dir.to(torch.float32)
+    tensor_float32 -= scale_factor * torch.matmul(torch.outer(refusal_dir_float32, refusal_dir_float32), tensor_float32)
+    tensor_modified = tensor_float32.to(torch.bfloat16)
     bar_layers.update(1)
     return torch.nn.Parameter(tensor_modified)
 
@@ -149,5 +142,7 @@ bar_layers.close()
 
 # Save the modified model and original tokenizer
 print("Saving modified model (with original tokenizer)...")
-model.save_pretrained(MODEL_ID + "-remove-refusals")
-tokenizer.save_pretrained(MODEL_ID + "-remove-refusals")
+#model.save_pretrained("Mistral-7B-Instruct-v0.2-fixed")
+#tokenizer.save_pretrained("Mistral-7B-Instruct-v0.2-fixed")
+model.save_pretrained("miqu-1-70b-sf-fixed")
+tokenizer.save_pretrained("miqu-1-70b-sf-fixed")

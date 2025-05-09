@@ -1,25 +1,23 @@
 from typing import Optional, Tuple
+
 import einops
 import jaxtyping
 import torch
 import torch.nn as nn
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer, BitsAndBytesConfig
-import os
-
-os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
-
-MODEL_ID = "Qwen2.5-0.5B-Instruct"
-TORCH_DTYPE = torch.bfloat16
-DEVICE_MAP = "cpu"
 
 torch.inference_mode()
-torch.set_default_device(DEVICE_MAP)
 
-model = AutoModelForCausalLM.from_pretrained(MODEL_ID, trust_remote_code=True, torch_dtype=TORCH_DTYPE, low_cpu_mem_usage=True, device_map=DEVICE_MAP)
-if torch.backends.mps.is_available():
-    TORCH_DTYPE = torch.float32
-    DEVICE_MAP = "mps"
-    model = model.to(TORCH_DTYPE).to(DEVICE_MAP).eval()
+torch.set_default_device("cpu")
+
+MODEL_ID = "stabilityai/stablelm-2-zephyr-1_6b"
+#MODEL_ID = "Qwen/Qwen1.5-1.8B-Chat"
+#MODEL_ID = "Qwen/Qwen-1_8B-chat"
+#MODEL_ID = "google/gemma-1.1-2b-it"
+#MODEL_ID = "google/gemma-1.1-7b-it"
+#MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
+
+model = AutoModelForCausalLM.from_pretrained(MODEL_ID, trust_remote_code=True, device_map="cuda", quantization_config=BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16))
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
 
 refusal_dir = torch.load(MODEL_ID.replace("/", "_") + "_refusal_dir.pt")
